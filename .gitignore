@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+.venv*/
+
+# TrendRadar runtime output
+output/
+config/suggest_keywords.txt
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo

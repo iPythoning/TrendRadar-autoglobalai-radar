@@ -30,9 +30,20 @@ class AIClient:
                 - NUM_RETRIES: 重试次数（可选）
                 - FALLBACK_MODELS: 备用模型列表（可选）
         """
-        self.model = config.get("MODEL", "deepseek/deepseek-chat")
-        self.api_key = config.get("API_KEY") or os.environ.get("AI_API_KEY", "")
-        self.api_base = config.get("API_BASE", "")
+        # 支持 omni.paibao.ai 的环境变量命名约定
+        self.model = config.get("MODEL") or os.environ.get("AI_MODEL", "openai/auto/fast")
+        self.api_key = (
+            config.get("API_KEY")
+            or os.environ.get("AI_API_KEY", "")
+            or os.environ.get("OMNI_API_KEY", "")
+            or os.environ.get("OMNI_CLOUD_KEY", "")
+        )
+        self.api_base = (
+            config.get("API_BASE", "")
+            or os.environ.get("AI_API_BASE", "")
+            or os.environ.get("OMNI_BASE_URL", "")
+            or os.environ.get("OMNI_CLOUD_URL", "")
+        )
         self.temperature = config.get("TEMPERATURE", 1.0)
         self.max_tokens = config.get("MAX_TOKENS", 5000)
         self.timeout = config.get("TIMEOUT", 120)

@@ -23,6 +23,7 @@ from trendradar.ai import AIAnalyzer, AIAnalysisResult
 from trendradar.core.scheduler import ResolvedSchedule
 from trendradar.commands import check_all_versions, run_doctor, run_test_notification, handle_status_commands
 from trendradar.commands.version import _fetch_remote_version, _parse_version
+from trendradar.keywords_optimizer import generate_suggestions
 
 
 
@@ -788,6 +789,24 @@ class NewsAnalyzer:
             )
 
         return stats, html_file, ai_result, rss_items, standalone_data, rss_new_items
+
+    def _run_keyword_optimization(self, results: Dict) -> None:
+        """
+        运行动态关键词优化器
+        从最新抓取的热榜标题中发现新的品牌/车型/市场/信号候选词
+        """
+        try:
+            titles = []
+            for platform_titles in results.values():
+                if isinstance(platform_titles, dict):
+                    titles.extend(platform_titles.keys())
+            if not titles:
+                return
+
+            ai_config = self.ctx.config.get("AI", {})
+            generate_suggestions(titles, output_path="config/suggest_keywords.txt", ai_config=ai_config)
+        except Exception as e:
+            print(f"[关键词优化] 运行失败: {e}")
 
     def _send_notification_if_needed(
         self,
@@ -1626,6 +1645,9 @@ class NewsAnalyzer:
                 rss_items=rss_items, rss_new_items=rss_new_items,
                 raw_rss_items=raw_rss_items, rss_new_urls=rss_new_urls
             )
+
+            # 动态关键词优化：基于本次抓取标题生成候选词建议
+            self._run_keyword_optimization(results)
 
         except Exception as e:
             print(f"分析流程执行出错: {e}")
