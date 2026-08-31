@@ -57,6 +57,20 @@ RADAR_SKIP_TRANSLATION=true uv run python scripts/build_autoglobalai_radar.py
 - `RADAR_SITE_HOST` — `https://radar.autoglobalai.com`
 - `CI_RUNNER` — 可选，设置为 `["ubuntu-latest"]` 或自建 runner
 
+## 部署状态
+- **手动部署**：已完成。首次站点通过 `wrangler pages deploy` 从本地部署到 `autoglobalai-radar` 项目，自定义域名 `radar.autoglobalai.com` 已解析并返回 HTTP 200。
+- **自动部署（GitHub Actions）**：流水线 `crawler.yml`、Secrets/Vars、xserver self-hosted runner 均已配置，但 GitHub Actions 目前未向该仓库的 runner 派发任何 job（workflow 一直停留在 queued）。疑似账户/仓库级 GitHub Actions 调度问题，正在排查。
+
+## 手动更新站点（临时）
+```bash
+cd /tmp/trendradar-autoglobalai/repo
+uv run python -m trendradar                          # 抓取
+RADAR_SITE_HOST=https://radar.autoglobalai.com uv run python scripts/build_autoglobalai_radar.py
+cd output/site
+CF_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=1649a7519a5895b9120c661e7063ad7a \
+  wrangler pages deploy . --project-name=autoglobalai-radar --branch=main
+```
+
 ## 注意事项
 - `output/` 已加入 `.gitignore`，不提交数据库和生成文件。
 - `OMNI_API_KEY` 优先于 `AI_API_KEY`。
@@ -64,6 +78,7 @@ RADAR_SKIP_TRANSLATION=true uv run python scripts/build_autoglobalai_radar.py
 - 当前条目标题仍为中文（源语言），仅关键词与页面 UI 本地化。
 
 ## 待改进
+- [ ] 解决 GitHub Actions 不向该仓库 self-hosted runner 派单的问题，恢复自动部署
 - [ ] 异步/批量优化翻译速度与稳定性
 - [ ] 翻译条目标题并做质量校验
 - [ ] 增加 AI 摘要与趋势解读区块
@@ -71,7 +86,7 @@ RADAR_SKIP_TRANSLATION=true uv run python scripts/build_autoglobalai_radar.py
 - [ ] 根据 `config/suggest_keywords.txt` 定期回注优质动态词到 `frequency_words.txt`
 
 ## 最近更新
-- 2026-08-31: 多语言站点生成器、CF Pages 部署、自定义域名配置完成。
+- 2026-08-31: 多语言站点生成器、CF Pages 部署、自定义域名配置完成；首次手动部署上线。
 
 ## 交接人
 - 仓库: iPythoning/TrendRadar-autoglobalai-radar
