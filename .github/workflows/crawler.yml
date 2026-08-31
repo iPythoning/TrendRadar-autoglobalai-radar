@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   crawl:
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    runs-on: ${{ fromJSON(vars.CI_RUNNER) }}
     timeout-minutes: 15
 
     steps:
