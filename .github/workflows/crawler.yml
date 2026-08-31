@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   crawl:
-    runs-on: ${{ fromJSON(vars.CI_RUNNER) }}
+    runs-on: [self-hosted, xserver]
     timeout-minutes: 15
 
     steps:
