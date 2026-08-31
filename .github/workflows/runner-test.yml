@@ -5,7 +5,7 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, xserver]
+    runs-on: [self-hosted]
     steps:
       - name: Hello
         run: echo "Hello from self-hosted runner"
