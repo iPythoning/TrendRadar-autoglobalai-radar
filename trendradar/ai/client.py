@@ -84,6 +84,10 @@ class AIClient:
         # 添加 API Base（如果配置了）
         if self.api_base:
             params["api_base"] = self.api_base
+            # 自定义 OpenAI 兼容网关（如 omni.paibao.ai）的路由名（auto/fast）
+            # 不含 provider 前缀，litellm 需要显式声明 provider 才不会报
+            # "LLM Provider NOT provided"
+            params["custom_llm_provider"] = "openai"
 
         # 添加 max_tokens（如果配置了且不为 0）
         max_tokens = kwargs.get("max_tokens", self.max_tokens)
