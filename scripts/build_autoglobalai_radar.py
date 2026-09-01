@@ -133,30 +133,104 @@ I18N: Dict[str, Dict[str, str]] = {
         "fa": "امروز سیگنال مطابقی وجود ندارد. به زودی برگردید.",
         "pt": "Nenhum sinal correspondente hoje. Volte em breve.",
     },
+    "subscribe_title": {
+        "en": "Get the daily radar in your inbox",
+        "ru": "Получайте ежедневный радар на почту",
+        "ar": "احصل على الرادار اليومي في بريدك",
+        "es": "Recibe el radar diario en tu correo",
+        "fa": "رادار روزانه را در ایمیل خود دریافت کنید",
+        "pt": "Receba o radar diário no seu e-mail",
+    },
+    "subscribe_body": {
+        "en": "One email per day with the top Chinese auto export signals. No spam, unsubscribe anytime.",
+        "ru": "Одно письмо в день с главными сигналами автомобильного экспорта Китая. Без спама, отписка в любой момент.",
+        "ar": "رسالة واحدة يوميًا بأهم إشارات تصدير السيارات الصينية. بدون بريد مزعج، ويمكنك إلغاء الاشتراك في أي وقت.",
+        "es": "Un correo al día con las principales señales de exportación de autos chinos. Sin spam, cancela cuando quieras.",
+        "fa": "یک ایمیل در روز با مهم‌ترین سیگنال‌های صادرات خودروی چین. بدون هرزنامه، لغو اشتراک در هر زمان.",
+        "pt": "Um e-mail por dia com os principais sinais de exportação de automóveis chineses. Sem spam, cancele quando quiser.",
+    },
+    "subscribe_placeholder": {
+        "en": "Work email",
+        "ru": "Рабочая почта",
+        "ar": "البريد الإلكتروني للعمل",
+        "es": "Correo de trabajo",
+        "fa": "ایمیل کاری",
+        "pt": "E-mail de trabalho",
+    },
+    "subscribe_button": {
+        "en": "Subscribe",
+        "ru": "Подписаться",
+        "ar": "اشترك",
+        "es": "Suscribirse",
+        "fa": "اشتراک",
+        "pt": "Assinar",
+    },
+    "subscribe_success": {
+        "en": "Subscribed. You'll get the next daily radar.",
+        "ru": "Готово. Вы получите следующий ежедневный радар.",
+        "ar": "تم الاشتراك. ستصلك النسخة اليومية القادمة.",
+        "es": "Listo. Recibirás el próximo radar diario.",
+        "fa": "ثبت شد. رادار روزانه بعدی را دریافت خواهید کرد.",
+        "pt": "Inscrito. Você receberá o próximo radar diário.",
+    },
+    "subscribe_error": {
+        "en": "Something went wrong. Please try again later.",
+        "ru": "Что-то пошло не так. Попробуйте позже.",
+        "ar": "حدث خطأ ما. حاول مرة أخرى لاحقًا.",
+        "es": "Algo salió mal. Inténtalo de nuevo más tarde.",
+        "fa": "مشکلی پیش آمد. لطفاً بعداً دوباره تلاش کنید.",
+        "pt": "Algo deu errado. Tente novamente mais tarde.",
+    },
 }
 
 AUTO_EXPORT_KEYWORDS: List[str] = []
 
 
-def load_frequency_words(path: Path) -> List[str]:
-    """加载 frequency_words.txt，提取关键词"""
-    words: List[str] = []
+def load_frequency_groups(path: Path) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """加载 frequency_words.txt，保留 TrendRadar 原生词组语义。
+
+    返回 (groups, global_filter)：
+    - groups: [{"name", "required": [...], "normal": [...], "filter": [...]}]
+      `+词` = 必须全部命中（AND）；`!词` = 命中即排除；其余 = 任一命中（OR）
+    - global_filter: [GLOBAL_FILTER] 区的词，标题命中即整条排除
+    """
+    groups: List[Dict[str, Any]] = []
+    global_filter: List[str] = []
     if not path.exists():
-        return words
+        return groups, global_filter
+    current: Dict[str, Any] | None = None
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#") or stripped.startswith("["):
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            name = stripped[1:-1].strip()
+            if name == "GLOBAL_FILTER":
+                current = None
+            else:
+                current = {"name": name, "required": [], "normal": [], "filter": []}
+                groups.append(current)
             continue
         if "=>" in stripped:
             stripped = stripped.split("=>")[0].strip()
         if stripped.startswith("/") and stripped.endswith("/"):
             stripped = stripped[1:-1]
-        if stripped:
-            # 过滤纯单字母噪声词
-            if len(stripped) == 1 and stripped.isalpha() and stripped.isascii():
-                continue
-            words.append(stripped)
-    return words
+        if not stripped:
+            continue
+        # 过滤纯单字母噪声词（不过滤中文单字，如 +车）
+        if len(stripped.lstrip("+!")) == 1 and stripped.lstrip("+!").isalpha() and stripped.lstrip("+!").isascii():
+            continue
+        if current is None:
+            # [GLOBAL_FILTER] 区：不进词组，作为全局排除词
+            global_filter.append(stripped.lstrip("+!"))
+            continue
+        if stripped.startswith("+"):
+            current["required"].append(stripped[1:])
+        elif stripped.startswith("!"):
+            current["filter"].append(stripped[1:])
+        else:
+            current["normal"].append(stripped)
+    return groups, global_filter
 
 
 def extract_items(ctx: AppContext) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -209,21 +283,30 @@ def extract_items(ctx: AppContext) -> Tuple[List[Dict[str, Any]], List[Dict[str,
 
 def group_items_by_keyword(
     items: List[Dict[str, Any]],
-    keywords: List[str],
+    groups: List[Dict[str, Any]],
+    global_filter: List[str],
     max_items_per_group: int = 20,
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    按关键词对条目分组，去重并按 last_time/rank 排序
-    """
-    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    """按词组语义对条目分组（required AND + normal OR + filter 排除 + 全局排除）"""
+    out: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     seen_titles: set = set()
 
     for item in items:
         title = item["title"]
+        # 全局排除（标题党/无关内容）
+        if any(f and f in title for f in global_filter):
+            continue
         matched: List[str] = []
-        for kw in keywords:
-            if kw in title:
-                matched.append(kw)
+        for group in groups:
+            # 组内排除词
+            if any(f and f in title for f in group["filter"]):
+                continue
+            # required 全部命中才算候选
+            if group["required"] and not all(r and r in title for r in group["required"]):
+                continue
+            for kw in group["normal"]:
+                if kw and kw in title:
+                    matched.append(kw)
         if not matched:
             continue
 
@@ -232,30 +315,46 @@ def group_items_by_keyword(
             key = (kw, title)
             if key not in seen_titles:
                 seen_titles.add(key)
-                groups[kw].append(item)
+                out[kw].append(item)
 
     # 排序：按 count 降序，然后 rank 升序
-    for kw in groups:
-        groups[kw].sort(key=lambda x: (-x.get("count", 1), x.get("rank", 999)))
-        groups[kw] = groups[kw][:max_items_per_group]
+    for kw in out:
+        out[kw].sort(key=lambda x: (-x.get("count", 1), x.get("rank", 999)))
+        out[kw] = out[kw][:max_items_per_group]
 
     # 按组大小排序
-    return dict(sorted(groups.items(), key=lambda x: (-len(x[1]), x[0])))
+    return dict(sorted(out.items(), key=lambda x: (-len(x[1]), x[0])))
 
 
 def build_translation_payload(
     keyword_groups: Dict[str, List[Dict[str, Any]]],
     max_keywords: int = 30,
+    max_titles: int = 50,
 ) -> Tuple[List[str], Dict[str, Any]]:
     """
-    构造需要翻译的文本列表（仅关键词，用于 6 语言雷达）
+    构造需要翻译的文本列表（关键词 + 新闻标题，用于 6 语言雷达）
     """
     texts: List[str] = []
-    meta: Dict[str, Any] = {"keywords": {}}
+    meta: Dict[str, Any] = {"keywords": {}, "titles": {}}
 
     for kw in list(keyword_groups.keys())[:max_keywords]:
         meta["keywords"][kw] = len(texts)
         texts.append(kw)
+
+    # 唯一标题：按词组顺序（大组优先、组内已按热度排序）取前 max_titles 条
+    seen: set = set()
+    for items in keyword_groups.values():
+        for item in items:
+            t = item["title"]
+            if t in seen:
+                continue
+            seen.add(t)
+            if len(meta["titles"]) >= max_titles:
+                break
+            meta["titles"][t] = len(texts)
+            texts.append(t)
+        if len(meta["titles"]) >= max_titles:
+            break
 
     return texts, meta
 
@@ -281,11 +380,12 @@ def translate_to_all_languages(
         return {lang["code"]: [] for lang in LANGUAGES}
 
     lang_list = ", ".join(target_langs)
-    prompt = f"""Translate each Chinese automotive keyword into {lang_list}.
+    prompt = f"""Translate each Chinese text (automotive industry keyword or news headline) into {lang_list}.
 Rules:
-- Treat each keyword as a single unit; do not split into individual characters.
+- Treat each text as a single unit; do not split into individual characters.
 - Keep brand/model names (BYD, Chery, Haval, 比亚迪, 奇瑞) recognizable.
 - Preserve automotive terms in their commonly accepted local form.
+- Headlines must read as natural native news headlines, not word-by-word translation.
 - Output a single JSON object with language codes as keys and arrays of translated strings in the same order as the input.
 - Each array must contain exactly {len(texts)} strings. No explanations.
 
@@ -340,9 +440,15 @@ def build_translated_groups(
     meta: Dict[str, Any],
 ) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
     """
-    仅翻译关键词标题，条目保持中文原文
+    翻译关键词标题 + 新闻标题（title_t），原文保留在 title
     """
     lang_groups: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+
+    def translated_title(texts: List[str], title: str) -> str:
+        idx = meta.get("titles", {}).get(title)
+        if idx is None or idx >= len(texts):
+            return title
+        return texts[idx] or title
 
     for lang in LANGUAGES:
         code = lang["code"]
@@ -358,7 +464,10 @@ def build_translated_groups(
                 translated_kw = kw
             else:
                 translated_kw = translated_texts[kw_index]
-            lang_groups[code][translated_kw] = items
+            lang_groups[code][translated_kw] = [
+                {**item, "title_t": translated_title(translated_texts, item["title"])}
+                for item in items
+            ]
 
     return lang_groups
 
@@ -441,18 +550,19 @@ def build_page(
         for keyword, items in list(groups.items())[:30]:
             item_rows = []
             for item in items[:10]:
-                title = html_escape(item["title"])
+                title = html_escape(item.get("title_t") or item["title"])
+                original = html_escape(item["title"])
                 source = html_escape(item.get("source_name", ""))
                 rank = item.get("rank", 0)
                 url = html_escape(item.get("url", ""))
                 rank_badge = f'<span class="rank">#{rank}</span>' if rank else ""
                 if url:
                     item_rows.append(
-                        f'<li>{rank_badge}<a href="{url}" target="_blank" rel="noopener noreferrer">{title}</a> <span class="source">{source}</span></li>'
+                        f'<li>{rank_badge}<a href="{url}" target="_blank" rel="noopener noreferrer" title="{original}">{title}</a> <span class="source">{source}</span></li>'
                     )
                 else:
                     item_rows.append(
-                        f'<li>{rank_badge}<span class="title">{title}</span> <span class="source">{source}</span></li>'
+                        f'<li>{rank_badge}<span class="title" title="{original}">{title}</span> <span class="source">{source}</span></li>'
                     )
 
             count = len(items)
@@ -463,6 +573,58 @@ def build_page(
                     <ol>{''.join(item_rows)}</ol>
                 </section>"""
             )
+
+    # 订阅区
+    sub_title = I18N["subscribe_title"][code]
+    sub_body = I18N["subscribe_body"][code]
+    sub_placeholder = I18N["subscribe_placeholder"][code]
+    sub_button = I18N["subscribe_button"][code]
+    sub_success = I18N["subscribe_success"][code]
+    sub_error = I18N["subscribe_error"][code]
+
+    subscribe_html = f"""
+        <section class="subscribe">
+            <h2>{html_escape(sub_title)}</h2>
+            <p>{html_escape(sub_body)}</p>
+            <form id="radar-sub-form" novalidate>
+                <input type="email" name="email" required placeholder="{html_escape(sub_placeholder)}" aria-label="Email">
+                <input type="hidden" name="lang" value="{code}">
+                <button type="submit">{html_escape(sub_button)}</button>
+            </form>
+            <p id="radar-sub-msg" class="sub-msg" role="status" aria-live="polite"></p>
+        </section>
+        <script>
+        (function() {{
+            var form = document.getElementById('radar-sub-form');
+            var msg = document.getElementById('radar-sub-msg');
+            if (!form) return;
+            form.addEventListener('submit', function(e) {{
+                e.preventDefault();
+                var email = form.email.value.trim();
+                if (!email) return;
+                msg.textContent = '…';
+                msg.className = 'sub-msg';
+                fetch('/api/subscribe', {{
+                    method: 'POST',
+                    headers: {{'content-type': 'application/json'}},
+                    body: JSON.stringify({{email: email, lang: '{code}'}})
+                }}).then(function(r) {{ return r.json().then(function(d) {{ return {{ok: r.ok && d.ok, d: d}}; }}); }})
+                .then(function(res) {{
+                    if (res.ok) {{
+                        msg.textContent = {json.dumps(sub_success, ensure_ascii=False)};
+                        msg.className = 'sub-msg ok';
+                        form.reset();
+                    }} else {{
+                        msg.textContent = {json.dumps(sub_error, ensure_ascii=False)};
+                        msg.className = 'sub-msg err';
+                    }}
+                }}).catch(function() {{
+                    msg.textContent = {json.dumps(sub_error, ensure_ascii=False)};
+                    msg.className = 'sub-msg err';
+                }});
+            }});
+        }})();
+        </script>"""
 
     content_html = "\n".join(sections_html)
 
@@ -532,6 +694,16 @@ def build_page(
         .keyword-section a {{ color: var(--accent); text-decoration: none; }}
         .keyword-section a:hover {{ text-decoration: underline; }}
         .no-data {{ color: var(--muted); padding: 2rem 0; }}
+        .subscribe {{ background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin: 2rem 0; }}
+        .subscribe h2 {{ margin: 0 0 0.4rem; font-size: 1.2rem; }}
+        .subscribe p {{ margin: 0 0 1rem; color: var(--muted); }}
+        .subscribe form {{ display: flex; gap: 0.5rem; flex-wrap: wrap; }}
+        .subscribe input[type="email"] {{ flex: 1; min-width: 220px; padding: 0.7rem 0.9rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; }}
+        .subscribe button {{ background: var(--accent); color: #fff; border: 0; padding: 0.7rem 1.4rem; border-radius: 6px; font-weight: 600; cursor: pointer; }}
+        .subscribe button:hover {{ background: var(--accent-dark); }}
+        .sub-msg {{ margin: 0.6rem 0 0; font-size: 0.9rem; }}
+        .sub-msg.ok {{ color: #15803d; }}
+        .sub-msg.err {{ color: #b91c1c; }}
         footer {{ text-align: center; color: var(--muted); font-size: 0.85rem; padding: 2rem 0; border-top: 1px solid var(--border); margin-top: 2rem; }}
         {rtl_css}
         @media (max-width: 640px) {{
@@ -574,6 +746,7 @@ def build_page(
 
         <h2>{html_escape(keyword_ranking_title)}</h2>
         {content_html}
+        {subscribe_html}
     </main>
 
     <footer>
@@ -605,6 +778,90 @@ def generate_sitemap(site_host: str, output_dir: Path) -> None:
 </urlset>"""
 
     (output_dir / "sitemap.xml").write_text(sitemap, encoding="utf-8")
+
+
+SUBSCRIBE_FUNCTION_JS = r"""// Cloudflare Pages Function: POST /api/subscribe
+// 邮箱写入 RADAR_SUBS KV；若配置了 RESEND_API_KEY + RESEND_AUDIENCE_ID 则同步进 Resend 受众。
+
+function jsonResponse(obj, status) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+export async function onRequestPost(context) {
+  const { request, env } = context;
+  let email = "";
+  let lang = "";
+  try {
+    const ct = request.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const body = await request.json();
+      email = String(body.email || "").trim();
+      lang = String(body.lang || "").trim().slice(0, 8);
+    } else {
+      const form = await request.formData();
+      email = String(form.get("email") || "").trim();
+      lang = String(form.get("lang") || "").trim().slice(0, 8);
+    }
+  } catch (e) {
+    return jsonResponse({ ok: false, error: "bad_request" }, 400);
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254) {
+    return jsonResponse({ ok: false, error: "invalid_email" }, 422);
+  }
+  if (!env.RADAR_SUBS) {
+    return jsonResponse({ ok: false, error: "not_configured" }, 503);
+  }
+
+  const key = email.toLowerCase();
+  const record = JSON.stringify({
+    email: key,
+    lang: lang,
+    ts: new Date().toISOString(),
+    ua: (request.headers.get("user-agent") || "").slice(0, 200),
+  });
+  try {
+    await env.RADAR_SUBS.put(key, record);
+  } catch (e) {
+    return jsonResponse({ ok: false, error: "storage_failed" }, 500);
+  }
+
+  if (env.RESEND_API_KEY && env.RESEND_AUDIENCE_ID) {
+    try {
+      await fetch(
+        "https://api.resend.com/audiences/" + env.RESEND_AUDIENCE_ID + "/contacts",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + env.RESEND_API_KEY,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ email: key, unsubscribed: false }),
+        }
+      );
+    } catch (e) {
+      // Resend 失败不影响留资结果
+    }
+  }
+
+  return jsonResponse({ ok: true });
+}
+
+export async function onRequestOptions() {
+  return new Response(null, { status: 204 });
+}
+"""
+
+
+def write_subscribe_function(output_dir: Path) -> None:
+    """把 Pages Function 写进站点产物（随 cloudflare_dist 一起部署）"""
+    fn_dir = output_dir / "functions" / "api"
+    fn_dir.mkdir(parents=True, exist_ok=True)
+    (fn_dir / "subscribe.js").write_text(SUBSCRIBE_FUNCTION_JS, encoding="utf-8")
+    print(f"[雷达站点] 已生成 functions/api/subscribe.js")
 
 
 def generate_robots(site_host: str, output_dir: Path) -> None:
@@ -643,12 +900,12 @@ def main() -> None:
 
     print(f"[雷达站点] 站点域名: {site_host}")
 
-    # 加载关键词
+    # 加载关键词（保留 +/! 词组语义）
     freq_path = Path(ctx.config.get("FREQUENCY_WORDS_FILE", "config/frequency_words.txt"))
     if not freq_path.is_absolute():
         freq_path = REPO_ROOT / freq_path
-    keywords = load_frequency_words(freq_path)
-    print(f"[雷达站点] 已加载 {len(keywords)} 个关键词")
+    freq_groups, global_filter = load_frequency_groups(freq_path)
+    print(f"[雷达站点] 已加载 {len(freq_groups)} 个词组，全局排除词 {len(global_filter)} 个")
 
     # 提取数据
     hotlist_items, rss_items = extract_items(ctx)
@@ -659,8 +916,8 @@ def main() -> None:
         print("[雷达站点] 没有数据，跳过站点生成")
         return
 
-    # 按关键词分组
-    keyword_groups = group_items_by_keyword(all_items, keywords, max_items_per_group=15)
+    # 按关键词分组（required AND + normal OR + 排除词）
+    keyword_groups = group_items_by_keyword(all_items, freq_groups, global_filter, max_items_per_group=15)
     print(f"[雷达站点] 命中 {len(keyword_groups)} 个关键词")
 
     # 翻译关键词（可选，API 不稳定时可关闭）
@@ -720,6 +977,7 @@ def main() -> None:
     generate_sitemap(site_host, output_dir)
     generate_robots(site_host, output_dir)
     generate_root_redirect(output_dir, default_lang)
+    write_subscribe_function(output_dir)
     print(f"[雷达站点] 站点生成完成：{output_dir}")
 
 
