@@ -82,31 +82,20 @@ LAUNCH_PATTERN = re.compile(
 
 EXTRACT_PROMPT = """你是中国汽车行业分析助手。下面是一些标题，其中可能包含「新车上市/发布/亮相/预售」信号。
 
-请对每个标题判断：它是否涉及【具体某个车型】的上市/发布/亮相/预售（而非品牌、政策、财报、召回等）。
+任务：判断每个标题是否涉及【具体某个车型】的上市/发布/亮相/预售（而非品牌战略、政策、财报、召回等）。
 
-对每个符合条件的标题，提取结构化信息，输出 JSON 数组（无符合则输出 []）：
+严格只输出一个 JSON 数组，不要任何解释、前言、markdown 代码块或分析文字。数组每个元素格式：
 
-[
-  {
-    "brand_zh": "品牌中文名（如 比亚迪/吉利/奇瑞；纯英文品牌则填英文）",
-    "series_zh": "车系中文名（如 海豹06/星舰7/风云A8；无中文名填英文系列名）",
-    "launch_date": "上市/发布日期 YYYY-MM-DD（标题未明示则填 null）",
-    "powertrain": "EV/PHEV/EREV/ICE/未知（标题未明示填 未知）",
-    "body_type": "SUV/sedan/hatchback/MPV/pickup/未知",
-    "source_title": "原标题",
-    "source_url": "原标题 URL（无则空字符串）"
-  }
-]
+{"brand_zh":"品牌中文名（纯英文品牌填英文）","series_zh":"车系中文名（保留数字/字母后缀）","launch_date":"YYYY-MM-DD 或 null","powertrain":"EV/PHEV/EREV/ICE/未知","body_type":"SUV/sedan/hatchback/MPV/pickup/未知","source_title":"原标题","source_url":"原标题 URL"}
 
 规则：
-- 只提取【车型】上市信号，品牌/子品牌整体战略、单款配置、颜色、价格调整不算。
-- 概念车、未量产的车也提取，但 powertrain/body_type 填「未知」。
-- 中文名优先，保留数字/字母后缀（如「海豹06 DM-i」「风云A8」）。
-- 不要编造标题里没有的信息。
+- 只提取【车型】上市信号；概念车也提取但 powertrain/body_type 填「未知」。
+- 不要编造标题里没有的信息。无符合条件的标题则输出 []。
 
 标题列表（每行一条）：
 {items}
-"""
+
+现在直接输出 JSON 数组："""
 
 
 def norm_title(t: str) -> str:
@@ -172,7 +161,7 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
     try:
         raw = client.chat(
             [
-                {"role": "system", "content": "你是中国汽车行业分析助手，只输出 JSON，不输出任何解释。"},
+                {"role": "system", "content": "你是中国汽车行业分析助手。你只输出一个合法的 JSON 数组，绝不输出解释、前言、代码块标记或任何非 JSON 文本。"},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.0,
@@ -182,7 +171,11 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
         print(f"[新车监控] AI 提取失败: {e}")
         return []
 
-    # 提取 JSON（容忍模型多输出 markdown 代码块/前缀）
+    # 提取 JSON（容忍模型多输出 markdown 代码块/前缀/后语）
+    raw = raw.strip()
+    # 去 markdown 代码块围栏
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
     m = re.search(r"\[[\s\S]*\]", raw)
     if not m:
         print(f"[新车监控] AI 未返回 JSON 数组，原始片段: {raw[:200]}")
@@ -193,7 +186,7 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
             return []
         return [p for p in parsed if isinstance(p, dict) and p.get("series_zh")]
     except json.JSONDecodeError as e:
-        print(f"[新车监控] JSON 解析失败: {e}")
+        print(f"[新车监控] JSON 解析失败: {e}；原始: {raw[:300]}")
         return []
 
 
