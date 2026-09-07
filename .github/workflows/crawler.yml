@@ -93,6 +93,16 @@ jobs:
           RADAR_SITE_HOST: ${{ vars.RADAR_SITE_HOST || 'https://radar.autoglobalai.com' }}
         run: uv run python scripts/build_autoglobalai_radar.py
 
+      - name: Extract new car launches (待审清单，不自动写库)
+        if: success()
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          AI_API_BASE: ${{ secrets.AI_API_BASE }}
+          OMNI_API_KEY: ${{ secrets.OMNI_API_KEY }}
+          OMNI_BASE_URL: ${{ secrets.OMNI_BASE_URL }}
+        run: uv run python scripts/extract_new_car_launches.py --days 3
+
       - name: Check Cloudflare config
         if: success()
         id: cf_check

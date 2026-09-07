@@ -19,6 +19,9 @@
   - RTL 支持（ar、fa）
   - AutoGlobalAI 品牌导航与 CTA
 - [x] `.github/workflows/crawler.yml` 每小时抓取 + 构建 + 部署到 Cloudflare Pages
+- [x] **新车上市监控（第二期）**：`scripts/extract_new_car_launches.py`（粗筛→AI 结构化提取→待审清单 `output/new-car-launches/YYYY-MM-DD.json`），已接入 crawler.yml 构建后
+- [x] **车型库 diff（方案 D）**：`scripts/diff_car_catalog.py`（对比汽车之家/懂车帝库两次快照，新增车系=新车），待数据库到位即用
+- [x] 新增汽车 RSS 源：CarNewsChina、CnEVPost、IT之家（新车上市信号源，补全 carnewschina 单源局限）
 - [x] Cloudflare Pages 项目 `autoglobalai-radar` 已创建
 - [x] 自定义域名 `radar.autoglobalai.com` + CNAME 已配置
 
@@ -27,11 +30,30 @@
 config/frequency_words.txt          # 静态关键词词表
 config/suggest_keywords.txt         # 动态候选词（每日自动生成，勿提交）
 scripts/build_autoglobalai_radar.py # 6 语言站点生成器
+scripts/extract_new_car_launches.py # 新车上市监控：RSS/热榜→AI 结构化提取→待审清单
+scripts/diff_car_catalog.py         # 车型库 diff：两版本库对比，新增车系=新车
+config/config.yaml                  # 新增 carnewschina/cnevpost/ithome RSS 源
 trendradar/keywords_optimizer.py    # 动态关键词优化器
 trendradar/ai/client.py             # 扩展支持 OMNI_API_KEY / OMNI_BASE_URL
 trendradar/__main__.py              # 集成关键词优化器到主流程
-.github/workflows/crawler.yml       # 抓取+构建+部署流水线
+.github/workflows/crawler.yml       # 抓取+构建+新车提取+部署流水线
 ```
+
+## 新车上市监控链路（第二期）
+
+**目的**：监控中国新增车型 → 产出结构化待审清单 → 供 chinesecarnames 补库（人工核实出口名后入）。
+
+**信号源（RSS，都已 200 可用）**：
+- `carnewschina.com/feed/` — 海外视角中国车新闻（含燃油车/传统厂）
+- `cnevpost.com/feed/` — 中国新能源车垂直，新车预售/上市信号密度最高
+- `ithome.com/rss/` — 长尾（小米/华为造车等跨界）
+
+**流程**：crawler.yml 每小时 → 抓 RSS/热榜 → `extract_new_car_launches.py --days 3` 粗筛「上市/发布/亮相/预售」+品牌线索 → AIClient 结构化提取 {品牌中文名,车系中文名,上市时间,动力,车体,来源} → 输出 `output/new-car-launches/YYYY-MM-DD.json`。**只出待审清单，不自动写库**（出口名需人工核实）。
+
+**方案 D（待数据库到位）**：`diff_car_catalog.py --old baseline.json --new latest.json` 对比汽车之家/懂车帝库两次快照，新增 seriesId/车系名 = 新车上市，比 RSS 更全（不漏任何国内上市的车）。
+
+**验证**：用真实 RSS 数据测粗筛，60 条命中 20 条（Voyah Dream 9、GAC-Huawei Aistaland GX7、BYD Sealion 08、IM Motors LS6、Geely Galaxy TT、Chery-JLR Freelander 8 等），质量高。
+
 
 ## 本地运行
 ```bash
@@ -86,6 +108,7 @@ CF_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=1649a7519a5895b9120c661e7063ad7a \
 - [ ] 根据 `config/suggest_keywords.txt` 定期回注优质动态词到 `frequency_words.txt`
 
 ## 最近更新
+- 2026-09-07: 第二期新车上市监控：新增 `extract_new_car_launches.py`（RSS/热榜→AI 结构化提取→待审清单）+ `diff_car_catalog.py`（车型库 diff，待数据库）+ 三个汽车 RSS 源（carnewschina/cnevpost/ithome），接入 crawler.yml。
 - 2026-08-31: 多语言站点生成器、CF Pages 部署、自定义域名配置完成；首次手动部署上线。
 
 ## 交接人
