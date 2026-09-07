@@ -131,6 +131,21 @@ rss:
       name: "Hacker News"
       url: "https://hnrss.org/frontpage"
 
+    - id: "carnewschina"
+      name: "CarNewsChina（中国汽车海外新闻）"
+      url: "https://carnewschina.com/feed/"
+      max_age_days: 3                # 新车上市信号，保留 3 天
+
+    - id: "cnevpost"
+      name: "CnEVPost（中国新能源车新闻）"
+      url: "https://cnevpost.com/feed/"
+      max_age_days: 3                # 新能源车新车预售/上市信号密度最高
+
+    - id: "ithome"
+      name: "IT之家（科技/汽车）"
+      url: "https://www.ithome.com/rss/"
+      max_age_days: 3                # 长尾：小米/华为造车等跨界信号
+
     - id: "ruanyifeng"
       name: "阮一峰的网络日志"
       url: "http://www.ruanyifeng.com/blog/atom.xml"
