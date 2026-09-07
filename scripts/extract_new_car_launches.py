@@ -167,7 +167,8 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
     if not items:
         return []
     lines = "\n".join(f"{i+1}. {it['title']} | {it['url']}" for i, it in enumerate(items))
-    prompt = EXTRACT_PROMPT.format(items=lines)
+    # 注意：EXTRACT_PROMPT 含 JSON 示例的花括号，不能用 .format()，用 replace 注入
+    prompt = EXTRACT_PROMPT.replace("{items}", lines)
     try:
         raw = client.chat(
             [
