@@ -164,7 +164,8 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
                 {"role": "system", "content": "你是中国汽车行业分析助手。你只输出一个合法的 JSON 数组，绝不输出解释、前言、代码块标记或任何非 JSON 文本。"},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.0,
+            # ⚠️ omni 网关对 temperature=0.0 会返回安全拦截（User Safety: safe），必须用 1.0
+            temperature=1.0,
             max_tokens=4000,
         )
     except Exception as e:
