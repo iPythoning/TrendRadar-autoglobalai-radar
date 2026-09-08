@@ -166,7 +166,7 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
             ],
             # ⚠️ omni 网关对 temperature=0.0 会返回安全拦截（User Safety: safe），必须用 1.0
             temperature=1.0,
-            max_tokens=4000,
+            max_tokens=8000,
         )
     except Exception as e:
         print(f"[新车监控] AI 提取失败: {e}")
@@ -176,29 +176,33 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
     raw = raw.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
-    m = re.search(r"\[[\s\S]*\]", raw)
-    if not m:
+    # 找第一个 [ 起
+    start = raw.find("[")
+    if start < 0:
         print(f"[新车监控] AI 未返回 JSON 数组，原始片段: {raw[:200]}")
         return []
-    json_str = m.group(0)
-    try:
-        parsed = json.loads(json_str)
-    except json.JSONDecodeError:
-        # 截断兜底：截到最后一个 "}," 补 "]"（容错模型输出被截断）
-        last = json_str.rfind("},")
-        if last > 0:
-            json_str = json_str[: last + 1] + "]"
-            try:
-                parsed = json.loads(json_str)
-            except json.JSONDecodeError as e:
-                print(f"[新车监控] JSON 截断兜底也失败: {e}；原始: {raw[:300]}")
-                return []
-        else:
-            print(f"[新车监控] JSON 解析失败；原始: {raw[:300]}")
-            return []
-    if not isinstance(parsed, list):
-        return []
-    return [p for p in parsed if isinstance(p, dict) and p.get("series_zh")]
+    json_str = raw[start:]
+    # 优先取完整闭合的 JSON 数组
+    m = re.search(r"\[[\s\S]*\]", json_str)
+    if m:
+        json_str = m.group(0)
+        try:
+            parsed = json.loads(json_str)
+            return [p for p in parsed if isinstance(p, dict) and p.get("series_zh")] if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            pass  # 完整闭合但内容有问题，继续截断兜底
+    # 截断兜底：从最后一个 "}," 往前回退，直到能解析（丢弃不完整的尾部对象）
+    positions = [i for i in range(len(json_str)) if json_str.startswith("},", i)]
+    for pos in reversed(positions):
+        candidate = json_str[: pos + 1] + "]"
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, list):
+                return [p for p in parsed if isinstance(p, dict) and p.get("series_zh")]
+        except json.JSONDecodeError:
+            continue
+    print(f"[新车监控] JSON 截断兜底全部失败；原始: {raw[:200]}")
+    return []
 
 
 def main() -> None:
