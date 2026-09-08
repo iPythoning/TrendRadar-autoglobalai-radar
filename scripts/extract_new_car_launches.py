@@ -237,11 +237,10 @@ def main() -> None:
 
     if not dry_run and candidates:
         ai_config = ctx.config.get("AI", {})
-        # 新车提取需要指令遵循强的模型：默认 auto/best-chat（主站 omni-parse 验证过）
-        # 覆盖 auto/fast（免费但指令遵循弱，返回纯文本而非 JSON）
+        # 新车提取必须用指令遵循强的模型：强制 auto/best-chat（主站 omni-parse 验证过）。
+        # auto/fast 免费但指令遵循弱、返回纯文本而非 JSON。可用 NEW_CAR_MODEL 覆盖。
         ai_config = dict(ai_config)
-        if not os.environ.get("AI_MODEL") and ai_config.get("MODEL") == "openai/auto/fast":
-            ai_config["MODEL"] = "openai/auto/best-chat"
+        ai_config["MODEL"] = os.environ.get("NEW_CAR_MODEL", "openai/auto/best-chat")
         client = AIClient(ai_config)
         ok, err = client.validate_config()
         if ok:
