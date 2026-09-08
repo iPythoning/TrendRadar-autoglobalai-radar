@@ -171,23 +171,33 @@ def ai_extract(client: AIClient, items: List[Dict[str, str]]) -> List[Dict[str, 
         print(f"[新车监控] AI 提取失败: {e}")
         return []
 
-    # 提取 JSON（容忍模型多输出 markdown 代码块/前缀/后语）
+    # 提取 JSON（容忍 markdown 围栏/前后语/截断）
     raw = raw.strip()
-    # 去 markdown 代码块围栏
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     m = re.search(r"\[[\s\S]*\]", raw)
     if not m:
         print(f"[新车监控] AI 未返回 JSON 数组，原始片段: {raw[:200]}")
         return []
+    json_str = m.group(0)
     try:
-        parsed = json.loads(m.group(0))
-        if not isinstance(parsed, list):
+        parsed = json.loads(json_str)
+    except json.JSONDecodeError:
+        # 截断兜底：截到最后一个 "}," 补 "]"（容错模型输出被截断）
+        last = json_str.rfind("},")
+        if last > 0:
+            json_str = json_str[: last + 1] + "]"
+            try:
+                parsed = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"[新车监控] JSON 截断兜底也失败: {e}；原始: {raw[:300]}")
+                return []
+        else:
+            print(f"[新车监控] JSON 解析失败；原始: {raw[:300]}")
             return []
-        return [p for p in parsed if isinstance(p, dict) and p.get("series_zh")]
-    except json.JSONDecodeError as e:
-        print(f"[新车监控] JSON 解析失败: {e}；原始: {raw[:300]}")
+    if not isinstance(parsed, list):
         return []
+    return [p for p in parsed if isinstance(p, dict) and p.get("series_zh")]
 
 
 def main() -> None:
@@ -222,6 +232,11 @@ def main() -> None:
 
     if not dry_run and candidates:
         ai_config = ctx.config.get("AI", {})
+        # 新车提取需要指令遵循强的模型：默认 auto/best-chat（主站 omni-parse 验证过）
+        # 覆盖 auto/fast（免费但指令遵循弱，返回纯文本而非 JSON）
+        ai_config = dict(ai_config)
+        if not os.environ.get("AI_MODEL") and ai_config.get("MODEL") == "openai/auto/fast":
+            ai_config["MODEL"] = "openai/auto/best-chat"
         client = AIClient(ai_config)
         ok, err = client.validate_config()
         if ok:
