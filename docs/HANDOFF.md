@@ -50,9 +50,12 @@ trendradar/__main__.py              # 集成关键词优化器到主流程
 
 **流程**：crawler.yml 每小时 → 抓 RSS/热榜 → `extract_new_car_launches.py --days 3` 粗筛「上市/发布/亮相/预售」+品牌线索 → AIClient 结构化提取 {品牌中文名,车系中文名,上市时间,动力,车体,来源} → 输出 `output/new-car-launches/YYYY-MM-DD.json`。**只出待审清单，不自动写库**（出口名需人工核实）。
 
-**方案 D（待数据库到位）**：`diff_car_catalog.py --old baseline.json --new latest.json` 对比汽车之家/懂车帝库两次快照，新增 seriesId/车系名 = 新车上市，比 RSS 更全（不漏任何国内上市的车）。
+**⚠️ omni 网关的三个关键坑（已修复，勿重蹈）**：
+1. `temperature=0.0` 会触发 omni 网关返回 `{"User Safety": "safe"}` 安全拦截（非真实模型输出），必须用 `temperature=1.0`。
+2. 模型名必须用 `openai/auto/best-chat`（指令遵循强），**不能用 `openai/auto/fast`**（免费但返回纯文本而非 JSON）。脚本已强制 `NEW_CAR_MODEL`（默认 best-chat），不受 CI 的 `AI_MODEL` 环境变量影响。
+3. AI 输出可能被 max_tokens 截断（无闭合 `]`），解析需逐对象回退：丢弃不完整尾部，保留完整对象。
 
-**验证**：用真实 RSS 数据测粗筛，60 条命中 20 条（Voyah Dream 9、GAC-Huawei Aistaland GX7、BYD Sealion 08、IM Motors LS6、Geely Galaxy TT、Chery-JLR Freelander 8 等），质量高。
+**实测效果**（2026-09-08 CI）：429 条标题 → 粗筛 21 条 → AI 提取 17 条（小米 Sky Nomad/澎程N70、岚图梦想家9、比亚迪海狮08、奇瑞捷豹路虎 Freelander 8、吉利银河 TT、智己 LS6、广汽华为 Aistaland GX7 等，中文名均正确）。
 
 
 ## 本地运行
