@@ -248,6 +248,8 @@ def main() -> None:
             result["launches"] = launches
             result["ai_extracted"] = True
             print(f"[新车监控] AI 提取出 {len(launches)} 条车型上市记录")
+            for la in launches:
+                print(f"  - {la.get('brand_zh','')} {la.get('series_zh','')} | {la.get('powertrain','')} | {la.get('body_type','')} | {la.get('launch_date','')}")
         else:
             print(f"[新车监控] AI 未配置（{err}），仅输出粗筛清单")
 
