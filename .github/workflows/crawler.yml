@@ -2,8 +2,8 @@ name: AutoGlobalAI Radar Crawl & Deploy
 
 on:
   schedule:
-    # 每小时运行一次（北京时间）
-    - cron: "0 * * * *"
+    # 每天一次（北京时间 16:00），用户确认降频（2026-09-09）
+    - cron: "0 8 * * *"
 
   workflow_dispatch:
 
